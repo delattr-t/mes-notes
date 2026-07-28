@@ -228,11 +228,72 @@ function App() {
   const [showCap, setShowCap] = useState(false);
   const [editing, setEditing] = useState(false);
   const [newProj, setNewProj] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [persistState, setPersistState] = useState("inconnu"); // oui | non | inconnu
+  const [flash, setFlash] = useState("");
   useEffect(() => {
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {}
   }, [state]);
+
+  // demander au navigateur de ne pas effacer les données automatiquement
+  useEffect(() => {
+    if (navigator.storage && navigator.storage.persisted) {
+      navigator.storage.persisted().then(already => {
+        if (already) {
+          setPersistState("oui");
+          return;
+        }
+        if (navigator.storage.persist) {
+          navigator.storage.persist().then(ok => setPersistState(ok ? "oui" : "non"));
+        } else setPersistState("non");
+      }).catch(() => setPersistState("non"));
+    } else setPersistState("non");
+  }, []);
+  const toast = msg => {
+    setFlash(msg);
+    setTimeout(() => setFlash(""), 2600);
+  };
+
+  // sauvegarde : télécharge tout le Carnet dans un fichier .json
+  const exportData = () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([JSON.stringify(state, null, 2)], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `carnet-sauvegarde-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast("Sauvegarde téléchargée");
+  };
+
+  // restauration : recharge un Carnet depuis un fichier .json
+  const importData = file => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!data || !Array.isArray(data.notes) || !Array.isArray(data.projects)) throw new Error("format");
+        setState({
+          projects: data.projects,
+          notes: data.notes,
+          nextId: data.nextId || Date.now()
+        });
+        setShowSettings(false);
+        toast("Carnet restauré");
+      } catch (e) {
+        toast("Fichier invalide — rien n'a changé");
+      }
+    };
+    reader.readAsText(file);
+  };
   const patchNote = (id, patch) => setState(s => ({
     ...s,
     notes: s.notes.map(n => n.id === id ? {
@@ -333,6 +394,19 @@ function App() {
       color: "var(--inkSoft)"
     }
   }, "notes · projets · mémoire")), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowSettings(true),
+    "aria-label": "Réglages et sauvegarde",
+    className: "rounded-xl flex items-center justify-center",
+    style: {
+      width: 38,
+      height: 38,
+      background: "var(--card)",
+      border: "1px solid var(--line)",
+      fontSize: 17
+    }
+  }, "⚙"), /*#__PURE__*/React.createElement("div", {
     className: "rounded-xl flex items-center justify-center disp text-white",
     style: {
       width: 38,
@@ -341,7 +415,7 @@ function App() {
       fontSize: 18,
       fontWeight: 700
     }
-  }, "C")), /*#__PURE__*/React.createElement("main", {
+  }, "C"))), /*#__PURE__*/React.createElement("main", {
     className: "flex-1 px-4"
   }, nav === "today" && /*#__PURE__*/React.createElement(React.Fragment, null, surfaced.length > 0 && /*#__PURE__*/React.createElement("section", {
     className: "mb-5"
@@ -652,7 +726,87 @@ function App() {
     style: {
       background: "var(--ink)"
     }
-  }, "Filer dans la boîte")))), note && /*#__PURE__*/React.createElement("div", {
+  }, "Filer dans la boîte")))), showSettings && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 z-30 flex items-end",
+    style: {
+      background: "rgba(27,31,38,.4)"
+    },
+    onClick: () => setShowSettings(false)
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-full max-w-md mx-auto rounded-t-3xl p-5",
+    style: {
+      background: "var(--card)",
+      paddingBottom: "calc(20px + env(safe-area-inset-bottom))"
+    },
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "disp mb-1",
+    style: {
+      fontWeight: 600,
+      fontSize: 20
+    }
+  }, "Sauvegarde"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm mb-4",
+    style: {
+      color: "var(--inkSoft)"
+    }
+  }, "Tes notes sont enregistrées sur cet appareil. Télécharge une sauvegarde pour ne rien risquer et pour les transférer ailleurs."), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mb-3"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: exportData,
+    className: "flex-1 py-3 rounded-xl text-sm font-medium text-white",
+    style: {
+      background: "var(--ink)"
+    }
+  }, "↓ Télécharger ma sauvegarde"), /*#__PURE__*/React.createElement("label", {
+    className: "flex-1 py-3 rounded-xl text-sm font-medium text-center cursor-pointer",
+    style: {
+      border: "1px solid var(--line)"
+    }
+  }, "↑ Restaurer un fichier", /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    accept: "application/json,.json",
+    className: "hidden",
+    onChange: e => importData(e.target.files[0])
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl p-3 mb-4",
+    style: {
+      background: "var(--paper)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "rounded-full",
+    style: {
+      width: 8,
+      height: 8,
+      background: persistState === "oui" ? "var(--green)" : persistState === "non" ? "var(--amber)" : "var(--inkSoft)"
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-medium"
+  }, persistState === "oui" && "Stockage protégé", persistState === "non" && "Stockage non garanti", persistState === "inconnu" && "Vérification du stockage…")), /*#__PURE__*/React.createElement("p", {
+    className: "mono mt-1",
+    style: {
+      fontSize: 10.5,
+      color: "var(--inkSoft)",
+      lineHeight: 1.5
+    }
+  }, persistState === "oui" && "Le navigateur ne supprimera pas tes notes automatiquement. Elles restent effaçables à la main (« Effacer les données du site »).", persistState === "non" && "Le navigateur pourrait nettoyer tes notes s'il manque d'espace. Garde une sauvegarde à jour.", persistState === "inconnu" && "…")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowSettings(false),
+    className: "w-full py-2.5 rounded-xl text-sm font-medium",
+    style: {
+      border: "1px solid var(--line)",
+      color: "var(--inkSoft)"
+    }
+  }, "Fermer"))), flash && /*#__PURE__*/React.createElement("div", {
+    className: "fixed left-1/2 z-40 px-4 py-2.5 rounded-xl text-sm font-medium text-white",
+    style: {
+      bottom: "calc(96px + env(safe-area-inset-bottom))",
+      transform: "translateX(-50%)",
+      background: "var(--ink)",
+      boxShadow: "0 6px 20px rgba(0,0,0,.25)"
+    }
+  }, flash), note && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 z-30 flex items-end sm:items-center justify-center",
     style: {
       background: "rgba(27,31,38,.45)"
