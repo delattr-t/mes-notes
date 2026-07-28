@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <title>Carnet</title>
+  <meta name="theme-color" content="#1B1F26" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    :root {
+      --paper:#EFF1ED; --card:#FFFFFF; --ink:#1B1F26; --inkSoft:#5A6270; --line:#D8DCD5;
+      --cobalt:#2242C8; --amber:#B8720F; --amberSoft:#F7EBD6; --green:#2F7D4F; --red:#B23A3A;
+    }
+    html,body{margin:0;background:var(--paper);-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;}
+    body{font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);}
+    .disp{font-family:'Zilla Slab',Georgia,serif;}
+    .mono{font-family:'IBM Plex Mono',ui-monospace,monospace;}
+    *{box-sizing:border-box;}
+    button{font-family:inherit;}
+    input,textarea{font-family:inherit;}
+    @keyframes rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+    .rise{animation:rise .4s ease both;}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+    .blink{animation:blink 1.4s infinite;}
+    @media (prefers-reduced-motion: reduce){.rise{animation:none;}.blink{animation:none;}}
+    .noscroll::-webkit-scrollbar{display:none;}
+    .noscroll{scrollbar-width:none;}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+const { useState, useMemo, useEffect } = React;
+
+const day = 864e5, now = Date.now();
+const TYPES = {
+  tache:{label:"Tâche",color:"#2242C8",bg:"#E4E9FB"},
+  idee:{label:"Idée",color:"#7C3AED",bg:"#EFE7FB"},
+  reference:{label:"Référence",color:"#0E7490",bg:"#DFF2F6"},
+  journal:{label:"Journal",color:"#6B7280",bg:"#ECEEF0"},
+};
+const PROJECT_COLORS = ["#2242C8","#2F7D4F","#B8720F","#7C3AED","#0E7490","#B23A3A"];
+
+const seed = {
+  projects:[
+    {id:"p1",name:"Site perso",color:"#2242C8"},
+    {id:"p2",name:"Potager 2026",color:"#2F7D4F"},
+    {id:"p3",name:"Side-project appli",color:"#B8720F"},
+  ],
+  notes:[
+    {id:1,projectId:"p1",type:"tache",title:"Choisir l'hébergeur",body:"Comparer OVH / Netlify / Vercel. Budget max 5€/mois.",createdAt:now-51*day,lastOpenedAt:now-51*day,done:false},
+    {id:2,projectId:"p1",type:"idee",title:"Page « maintenant »",body:"Une page /now qui dit sur quoi je bosse, mise à jour chaque mois.",createdAt:now-34*day,lastOpenedAt:now-34*day,done:false},
+    {id:3,projectId:"p1",type:"reference",title:"Palette retenue",body:"Encre sur papier, accent cobalt. Décision du 12/06.",createdAt:now-20*day,lastOpenedAt:now-2*day,done:false},
+    {id:4,projectId:"p1",type:"tache",title:"Rédiger la page À propos",body:"Ton direct, 3 paragraphes max.",createdAt:now-6*day,lastOpenedAt:now-6*day,done:false},
+    {id:5,projectId:"p2",type:"tache",title:"Commander les graines de tomates",body:"Cœur de bœuf + green zebra. Avant fin février.",createdAt:now-62*day,lastOpenedAt:now-62*day,done:false},
+    {id:6,projectId:"p2",type:"journal",title:"Premier semis raté",body:"Trop arrosé. La prochaine fois : vaporisateur seulement.",createdAt:now-15*day,lastOpenedAt:now-15*day,done:false},
+    {id:7,projectId:"p2",type:"idee",title:"Carrés surélevés côté sud",body:"Voir si 2 carrés de 1m20 passent entre la haie et la terrasse.",createdAt:now-44*day,lastOpenedAt:now-44*day,done:false},
+    {id:8,projectId:"p3",type:"idee",title:"Mode hors-ligne d'abord",body:"Tout doit marcher sans réseau, la synchro est un bonus.",createdAt:now-28*day,lastOpenedAt:now-28*day,done:false},
+    {id:9,projectId:"p3",type:"tache",title:"Maquetter l'écran d'accueil",body:"3 variantes papier avant Figma.",createdAt:now-3*day,lastOpenedAt:now-1*day,done:true},
+    {id:10,projectId:null,type:"idee",title:"Offrir un livre à Camille",body:"Elle veut se remettre au dessin.",createdAt:now-3*day,lastOpenedAt:now-3*day,done:false},
+  ],
+  nextId:100,
+};
+
+const ageDays = t => Math.max(0, Math.round((Date.now()-t)/day));
+const ageLabel = t => { const d=ageDays(t); if(d===0)return"aujourd'hui"; if(d===1)return"hier"; if(d<30)return`il y a ${d} j`; return`il y a ${Math.round(d/30)} mois`; };
+
+function resurgenceScore(n){
+  if(n.archived) return -1;
+  const dormant = ageDays(n.lastOpenedAt);
+  if(dormant<10) return -1;
+  let s=dormant;
+  if(n.type==="tache"&&!n.done) s+=40;
+  if(n.type==="idee") s+=10;
+  if(n.type==="reference") s-=15;
+  return s;
+}
+const resurgenceReason = n => (n.type==="tache"&&!n.done)?"tâche jamais faite":ageDays(n.lastOpenedAt)>40?"en sommeil profond":"pas rouverte depuis longtemps";
+
+// ————— persistance —————
+const KEY = "carnet:v1";
+function load(){ try{ const r=localStorage.getItem(KEY); if(r) return JSON.parse(r); }catch(e){} return seed; }
+
+const Chip = ({type}) => { const t=TYPES[type]; return <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{background:t.bg,color:t.color}}>{t.label}</span>; };
+
+function App(){
+  const [state, setState] = useState(load);
+  const {projects, notes, nextId} = state;
+  const [nav, setNav] = useState("today"); // today | projects | inbox
+  const [proj, setProj] = useState(projects[0]?.id);
+  const [tab, setTab] = useState("faire");
+  const [openId, setOpenId] = useState(null);
+  const [capture, setCapture] = useState("");
+  const [showCap, setShowCap] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [newProj, setNewProj] = useState("");
+
+  useEffect(()=>{ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }, [state]);
+
+  const patchNote = (id,patch)=> setState(s=>({...s, notes:s.notes.map(n=>n.id===id?{...n,...patch}:n)}));
+  const touch = (id,patch={})=> patchNote(id,{lastOpenedAt:Date.now(),...patch});
+  const openNote = n => { touch(n.id); setOpenId(n.id); };
+
+  const addCapture = ()=>{
+    const title = capture.trim(); if(!title) return;
+    setState(s=>({...s, nextId:s.nextId+1, notes:[{id:s.nextId,projectId:null,type:"idee",title,body:"",createdAt:Date.now(),lastOpenedAt:Date.now(),done:false},...s.notes]}));
+    setCapture(""); setShowCap(false); setNav("inbox");
+  };
+  const addProject = ()=>{
+    const name=newProj.trim(); if(!name) return;
+    const id="p"+Date.now();
+    setState(s=>({...s, projects:[...s.projects,{id,name,color:PROJECT_COLORS[s.projects.length%PROJECT_COLORS.length]}]}));
+    setNewProj(""); setProj(id);
+  };
+
+  const surfaced = useMemo(()=> notes.map(n=>({n,s:resurgenceScore(n)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,3).map(x=>x.n), [notes]);
+  const inbox = notes.filter(n=>n.projectId===null && !n.archived);
+  const staleInbox = inbox.some(n=>ageDays(n.createdAt)>=2);
+  const allOpenTasks = notes.filter(n=>n.type==="tache"&&!n.done&&!n.archived).sort((a,b)=>a.createdAt-b.createdAt);
+
+  const health = pid => {
+    const ps = notes.filter(n=>n.projectId===pid && !n.archived);
+    return { open: ps.filter(n=>n.type==="tache"&&!n.done).length, dormant: Math.max(0,...ps.map(n=>ageDays(n.lastOpenedAt)))>30, n: ps.length };
+  };
+  const projNotes = notes.filter(n=>n.projectId===proj);
+  const tabbed = {
+    faire: projNotes.filter(n=>n.type==="tache"&&!n.archived),
+    reflexion: projNotes.filter(n=>(n.type==="idee"||n.type==="journal")&&!n.archived),
+    reference: projNotes.filter(n=>n.type==="reference"||n.archived),
+  };
+  const note = notes.find(n=>n.id===openId);
+  const projOf = id => projects.find(p=>p.id===id);
+
+  return (
+    <div className="max-w-md mx-auto min-h-screen flex flex-col" style={{paddingBottom:"calc(72px + env(safe-area-inset-bottom))"}}>
+      {/* En-tête */}
+      <header className="px-4 flex items-center justify-between sticky top-0 z-10" style={{paddingTop:"calc(14px + env(safe-area-inset-top))",paddingBottom:12,background:"var(--paper)"}}>
+        <div>
+          <div className="disp" style={{fontWeight:700,fontSize:24,lineHeight:1}}>Carnet</div>
+          <div className="mono" style={{fontSize:10.5,color:"var(--inkSoft)"}}>notes · projets · mémoire</div>
+        </div>
+        <div className="rounded-xl flex items-center justify-center disp text-white" style={{width:38,height:38,background:"var(--ink)",fontSize:18,fontWeight:700}}>C</div>
+      </header>
+
+      <main className="flex-1 px-4">
+        {nav==="today" && <>
+          {surfaced.length>0 && <section className="mb-5">
+            <div className="flex items-baseline gap-2 mb-2">
+              <h2 className="disp" style={{fontWeight:600,fontSize:17}}>La remontée</h2>
+              <span className="mono" style={{fontSize:10.5,color:"var(--inkSoft)"}}>{surfaced.length} refont surface</span>
+            </div>
+            <div className="flex gap-2.5 overflow-x-auto noscroll -mx-4 px-4 pb-1">
+              {surfaced.map((n,i)=>{ const p=projOf(n.projectId); return (
+                <button key={n.id} onClick={()=>openNote(n)} className="rise text-left rounded-2xl p-3 shrink-0" style={{width:210,background:"var(--amberSoft)",border:"1px solid #B8720F33",animationDelay:(i*0.1)+"s"}}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="mono" style={{fontSize:10.5,color:"var(--amber)"}}>{ageLabel(n.lastOpenedAt)}</span>
+                    <Chip type={n.type}/>
+                  </div>
+                  <div className="font-semibold text-sm leading-snug mb-1">{n.title}</div>
+                  <div className="mono" style={{fontSize:10,color:"var(--inkSoft)"}}>{resurgenceReason(n)}{p?` · ${p.name}`:""}</div>
+                </button>
+              );})}
+            </div>
+          </section>}
+
+          <div className="flex items-baseline justify-between mb-2">
+            <h2 className="disp" style={{fontWeight:600,fontSize:17}}>Tout ce qu'il reste à faire</h2>
+            <span className="mono" style={{fontSize:11,color:"var(--inkSoft)"}}>{allOpenTasks.length}</span>
+          </div>
+          <div className="space-y-2">
+            {allOpenTasks.length===0 && <Empty>Aucune tâche en cours. Respire.</Empty>}
+            {allOpenTasks.map(n=>{ const p=projOf(n.projectId); return (
+              <Row key={n.id} n={n} onCheck={()=>touch(n.id,{done:!n.done})} onOpen={()=>openNote(n)} sub={<span className="mono" style={{fontSize:11,color:p?.color||"var(--inkSoft)"}}>{p?p.name:"sans projet"}</span>}/>
+            );})}
+          </div>
+        </>}
+
+        {nav==="projects" && <>
+          <div className="flex gap-2 overflow-x-auto noscroll -mx-4 px-4 pb-1 mb-3">
+            {projects.map(p=>{ const h=health(p.id); const on=proj===p.id; return (
+              <button key={p.id} onClick={()=>{setProj(p.id);setTab("faire");}} className="shrink-0 rounded-xl px-3 py-2 text-left" style={{background:on?"var(--card)":"transparent",border:`1px solid ${on?"var(--line)":"transparent"}`}}>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm" style={{background:p.color}}/>
+                  <span className="text-sm font-medium whitespace-nowrap">{p.name}</span>
+                </div>
+                <div className="mono" style={{fontSize:10,color:"var(--inkSoft)",paddingLeft:16}}>{h.open} à faire{h.dormant?" · sommeil":""}</div>
+              </button>
+            );})}
+            <div className="shrink-0 flex items-center gap-1">
+              <input value={newProj} onChange={e=>setNewProj(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addProject()} placeholder="Nouveau projet" className="rounded-xl px-2.5 py-2 text-sm outline-none" style={{width:120,background:"var(--card)",border:"1px solid var(--line)"}}/>
+              <button onClick={addProject} className="rounded-xl text-white" style={{width:34,height:34,background:"var(--ink)"}}>+</button>
+            </div>
+          </div>
+
+          {proj && <>
+            <div className="flex gap-1.5 mb-3">
+              {[["faire",`À faire · ${tabbed.faire.filter(n=>!n.done).length}`],["reflexion",`Réflexion · ${tabbed.reflexion.length}`],["reference",`Réf. · ${tabbed.reference.length}`]].map(([k,l])=>(
+                <button key={k} onClick={()=>setTab(k)} className="px-3 py-1.5 rounded-full text-xs font-medium" style={tab===k?{background:"var(--ink)",color:"#fff"}:{background:"var(--card)",border:"1px solid var(--line)",color:"var(--inkSoft)"}}>{l}</button>
+              ))}
+            </div>
+            <div className="space-y-2">
+              {tabbed[tab].length===0 && <Empty>Rien ici. Capture une note avec le bouton +, puis classe-la dans ce projet.</Empty>}
+              {tabbed[tab].slice().sort((a,b)=>a.done===b.done?b.createdAt-a.createdAt:a.done?1:-1).map(n=>(
+                <Row key={n.id} n={n} onCheck={n.type==="tache"?()=>touch(n.id,{done:!n.done}):null} onOpen={()=>openNote(n)} sub={<><Chip type={n.type}/><span className="mono" style={{fontSize:10.5,color:"var(--inkSoft)"}}>créée {ageLabel(n.createdAt)}</span></>}/>
+              ))}
+            </div>
+          </>}
+        </>}
+
+        {nav==="inbox" && <>
+          <h2 className="disp mb-1" style={{fontWeight:600,fontSize:17}}>Boîte d'entrée</h2>
+          <p className="mono mb-3" style={{fontSize:11,color:"var(--inkSoft)"}}>Trie sous 48 h, sinon la note passe au rouge.</p>
+          <div className="space-y-2">
+            {inbox.length===0 && <Empty>Boîte vide — tout est trié. Capture une note avec le +.</Empty>}
+            {inbox.map(n=>{ const stale=ageDays(n.createdAt)>=2; return (
+              <div key={n.id} className="rounded-xl px-3.5 py-3" style={{background:"var(--card)",border:`1px solid ${stale?"var(--red)":"var(--line)"}66`}}>
+                <button onClick={()=>openNote(n)} className="text-left w-full flex items-center justify-between">
+                  <span className="text-sm font-semibold">{n.title}</span>
+                  <span className="mono shrink-0 ml-2" style={{fontSize:10.5,color:stale?"var(--red)":"var(--inkSoft)"}}>{stale?"à trier !":"capturée "+ageLabel(n.createdAt)}</span>
+                </button>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {projects.map(p=>(
+                    <button key={p.id} onClick={()=>touch(n.id,{projectId:p.id})} className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{border:"1px solid var(--line)"}}>
+                      <span className="inline-block w-2 h-2 rounded-sm mr-1 align-middle" style={{background:p.color}}/>{p.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );})}
+          </div>
+        </>}
+      </main>
+
+      {/* Bouton capture flottant */}
+      <button onClick={()=>setShowCap(true)} className="fixed z-20 rounded-full text-white flex items-center justify-center shadow-lg" style={{right:18,bottom:"calc(84px + env(safe-area-inset-bottom))",width:54,height:54,background:"var(--ink)",fontSize:26,lineHeight:1}}>+</button>
+
+      {/* Barre de navigation basse */}
+      <nav className="fixed bottom-0 left-0 right-0 z-20 max-w-md mx-auto flex" style={{background:"var(--card)",borderTop:"1px solid var(--line)",paddingBottom:"env(safe-area-inset-bottom)"}}>
+        {[["today","Aujourd'hui","◎"],["projects","Projets","▤"],["inbox","Boîte","▦"]].map(([k,l,ic])=>(
+          <button key={k} onClick={()=>setNav(k)} className="flex-1 py-3 flex flex-col items-center gap-0.5" style={{color:nav===k?"var(--ink)":"var(--inkSoft)"}}>
+            <span style={{fontSize:18,position:"relative"}}>{ic}{k==="inbox"&&staleInbox&&<span className="blink absolute rounded-full" style={{width:7,height:7,background:"var(--red)",top:-1,right:-6}}/>}</span>
+            <span style={{fontSize:11,fontWeight:nav===k?600:400}}>{l}</span>
+          </button>
+        ))}
+      </nav>
+
+      {/* Capture */}
+      {showCap && <div className="fixed inset-0 z-30 flex items-end" style={{background:"rgba(27,31,38,.4)"}} onClick={()=>setShowCap(false)}>
+        <div className="w-full max-w-md mx-auto rounded-t-3xl p-4" style={{background:"var(--card)",paddingBottom:"calc(20px + env(safe-area-inset-bottom))"}} onClick={e=>e.stopPropagation()}>
+          <div className="disp mb-2" style={{fontWeight:600,fontSize:18}}>Capturer une note</div>
+          <textarea autoFocus value={capture} onChange={e=>setCapture(e.target.value)} placeholder="Ce que tu as en tête…" rows={3} className="w-full rounded-xl p-3 text-sm outline-none resize-none" style={{background:"var(--paper)",border:"1px solid var(--line)"}}/>
+          <div className="flex gap-2 mt-2">
+            <button onClick={()=>setShowCap(false)} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{border:"1px solid var(--line)",color:"var(--inkSoft)"}}>Annuler</button>
+            <button onClick={addCapture} className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white" style={{background:"var(--ink)"}}>Filer dans la boîte</button>
+          </div>
+        </div>
+      </div>}
+
+      {/* Fiche note */}
+      {note && <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center" style={{background:"rgba(27,31,38,.45)"}} onClick={()=>{setOpenId(null);setEditing(false);}}>
+        <div className="w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5" style={{background:"var(--card)",paddingBottom:"calc(20px + env(safe-area-inset-bottom))"}} onClick={e=>e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-2">
+            <Chip type={note.type}/>
+            <span className="mono" style={{fontSize:10.5,color:"var(--inkSoft)"}}>créée {ageLabel(note.createdAt)}</span>
+          </div>
+          {editing ? (
+            <input autoFocus value={note.title} onChange={e=>patchNote(note.id,{title:e.target.value})} className="disp w-full outline-none mb-2" style={{fontWeight:600,fontSize:21,background:"transparent",borderBottom:"1px solid var(--line)"}}/>
+          ) : (
+            <h3 className="disp mb-2" style={{fontWeight:600,fontSize:21}}>{note.title}</h3>
+          )}
+          {editing ? (
+            <textarea value={note.body} onChange={e=>patchNote(note.id,{body:e.target.value})} rows={4} placeholder="Détails…" className="w-full text-sm rounded-xl p-2.5 outline-none resize-none mb-3" style={{background:"var(--paper)",border:"1px solid var(--line)"}}/>
+          ) : (
+            <p className="text-sm leading-relaxed mb-3" style={{color:note.body?"var(--ink)":"var(--inkSoft)"}}>{note.body||"Pas encore de contenu. Touche « Modifier »."}</p>
+          )}
+
+          {/* changer de type */}
+          {editing && <div className="flex flex-wrap gap-1.5 mb-3">
+            {Object.keys(TYPES).map(k=>(
+              <button key={k} onClick={()=>patchNote(note.id,{type:k})} className="px-2.5 py-1 rounded-lg text-xs font-medium" style={note.type===k?{background:TYPES[k].bg,color:TYPES[k].color,border:`1px solid ${TYPES[k].color}55`}:{border:"1px solid var(--line)",color:"var(--inkSoft)"}}>{TYPES[k].label}</button>
+            ))}
+          </div>}
+
+          <div className="flex flex-wrap gap-2">
+            {note.projectId===null && projects.map(p=>(
+              <button key={p.id} onClick={()=>touch(note.id,{projectId:p.id})} className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{border:"1px solid var(--line)"}}>→ {p.name}</button>
+            ))}
+            {note.type==="tache" && <button onClick={()=>touch(note.id,{done:!note.done})} className="px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{background:note.done?"var(--inkSoft)":"var(--green)"}}>{note.done?"À refaire":"Marquer faite"}</button>}
+            <button onClick={()=>setEditing(e=>!e)} className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{border:"1px solid var(--line)"}}>{editing?"OK":"Modifier"}</button>
+            <button onClick={()=>{touch(note.id,{archived:!note.archived});setOpenId(null);setEditing(false);}} className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{border:"1px solid var(--line)",color:"var(--inkSoft)"}}>{note.archived?"Désarchiver":"Archiver"}</button>
+            <button onClick={()=>{setOpenId(null);setEditing(false);}} className="ml-auto px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{background:"var(--ink)"}}>Fermer</button>
+          </div>
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+function Row({n,onCheck,onOpen,sub}){
+  return (
+    <div className="rounded-xl px-3.5 py-3 flex items-center gap-3" style={{background:"var(--card)",border:"1px solid var(--line)",opacity:n.done?.55:1}}>
+      {onCheck && <button onClick={onCheck} aria-label="Cocher" className="w-6 h-6 rounded-md shrink-0 flex items-center justify-center text-xs text-white" style={{border:`1.5px solid ${n.done?"var(--green)":"var(--line)"}`,background:n.done?"var(--green)":"transparent"}}>{n.done?"✓":""}</button>}
+      <button onClick={onOpen} className="flex-1 min-w-0 text-left">
+        <div className="text-sm font-semibold truncate" style={{textDecoration:n.done?"line-through":"none"}}>{n.title}</div>
+        <div className="flex items-center gap-2 mt-0.5">{sub}</div>
+      </button>
+    </div>
+  );
+}
+const Empty = ({children}) => <div className="rounded-xl p-5 text-center text-sm" style={{border:"1px dashed var(--line)",color:"var(--inkSoft)"}}>{children}</div>;
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+
+// enregistrement du service worker
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=> navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+}
+  </script>
+</body>
+</html>
