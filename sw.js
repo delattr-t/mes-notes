@@ -3,7 +3,7 @@
 //   • assets statiques   -> cache d'abord (rapide + hors-ligne)
 // ⚠️ incrémente CACHE à chaque déploiement (v4, v5…)
 
-const CACHE = "carnet-v3";
+const CACHE = "carnet-v4";
 const ASSETS = [
   "./",
   "./index.html",
