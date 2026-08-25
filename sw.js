@@ -4,7 +4,7 @@
 //   • assets statiques    -> cache d'abord (rapide + hors-ligne)
 // Ça évite le piège du "j'ai mis à jour mais l'ancienne version reste affichée".
 
-const CACHE = "carnet-v2";   // ⚠️ incrémente ce numéro à chaque déploiement (v3, v4…)
+const CACHE = "carnet-v3";   // ⚠️ incrémente ce numéro à chaque déploiement (v3, v4…)
 const ASSETS = [
   "./",
   "./index.html",
